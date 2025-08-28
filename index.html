@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Угадай авто по части изображения (Phaser 3 — быстрый старт)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #141923;
+      --text: #e8f0f6;
+      --accent: #4caf50;
+      --muted: #9aa0a6;
+      --warning: #ffd166;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    #app {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 12px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    /* Игровая зона (Phaser) */
+    #phaser-game {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,.4);
+    }
+
+    /* UI под экраном: режимы, подсказки, прогресс и т.д. */
+    #ui {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      background: linear-gradient(#1a2030, #0e111a);
+      border-radius: 12px;
+      border: 1px solid #2b2f3a;
+    }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input[type="text"] {
+      flex: 1 1 280px;
+      min-width: 240px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #2e2e2e;
+      background: #111;
+      color: #fff;
+      font-size: 16px;
+    }
+    select, button {
+      padding: 12px 14px;
+      font-size: 15px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+    button.primary { background: #2e7d32; color: #fff; }
+    button.secondary { background: #555; color: #fff; }
+    #score { margin-left: auto; font-weight: bold; }
+    #feedback { min-height: 22px; margin-top: 6px; color: var(--warning); }
+    #hintBox { font-family: monospace; color: #c8f5a1; margin-top: 6px; white-space: pre-wrap; }
+    #progressPanel { margin-top: 6px; border-top: 1px dashed #333; padding-top: 8px; }
+    #progressList { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+    .slideBtn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 8px 6px; border-radius: 6px; border: 1px solid #333;
+      background: #1a1f2a; color: #fff; font-size: 13px; cursor: pointer;
+    }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .status-0 { background: #666; } /* 未 отвечено */
+    .status-1 { background: #4caf50; } /* правильно */
+    .status-2 { background: #ffd600; } /* пропуск/частично */
+    #restartBtn { display: none; margin-top: 6px; }
+
+    @media (max-width: 700px) {
+      #score { width: 100%; margin-left: 0; }
+      .row { flex-direction: column; align-items: stretch; }
+      #progressPanel { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="phaser-game" aria-label="Игровая зона: угадай авто по части изображения"></div>
+
+    <div id="ui" aria-label="Управление игрой">
+      <div class="row" style="gap:8px; align-items:center;">
+        <label for="modeSelect" style="font-size:14px; color:#cbd5e1;">Режим ответов:</label>
+        <select id="modeSelect" title="Режим ответов">
+          <option value="text">Классический (ввод текста)</option>
+          <option value="choices">Выбор вариантов</option>
+        </select>
+
+        <div id="modeHint" style="font-size:12px; color:var(--muted); margin-left:auto;">
+          Подсказки работают в любом режиме
+        </div>
+      </div>
+
+      <div class="row" style="gap:8px; align-items:center;">
+        <input id="guess" type="text" placeholder="Введите марку и модель (пример: Audi A4)" />
+
+        <div id="choicesContainer" style="display:none; width:100%;"></div>
+
+        <button id="checkBtn" class="primary" title="Проверить">Проверить</button>
+        <button id="hintBtn" class="secondary" title="Подсказка">Подсказка</button>
+        <button id="skipBtn" class="secondary" title="Пропустить">Пропустить</button>
+        <div id="score" aria-live="polite">Счет: 0</div>
+      </div>
+
+      <div id="feedback" aria-live="polite"></div>
+      <div id="hintBox" aria-live="polite"></div>
+
+      <div id="progressPanel" aria-label="Прогресс по кадрам">
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">
+          Прогресс и лучшие результаты
+        </div>
+        <div id="progressList"></div>
+      </div>
+
+      <button id="restartBtn" class="primary" aria-label="Сыграть ещё">Сыграть ещё</button>
+
+      <div style="font-size:12px; color:var(--muted); margin-top:6px;">
+        Подсказки: первые буквы слов, затем маскирование. Можно заменить изображения на ваши фото частей авто и заменить ответы.
+      </div>
+    </div>
+  </div>
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+
+  <script>
+    // 1) Базовый dataset для быстрого старта (замени на свой API в будущем)
+    const slides = [
+      { src: 'https://source.unsplash.com/800x450/?audi,a4',    answer: 'Audi A4',         hint: 'Немецкий средний седан' },
+      { src: 'https://source.unsplash.com/800x450/?bmw,3-series',answer: 'BMW 3 Series',      hint: 'Немецкий премиум-седан' },
+      { src: 'https://source.unsplash.com/800x450/?mercedes,c-class', answer: 'Mercedes C-Class', hint: 'Немецкий премиум-седан' },
+      { src: 'https://source.unsplash.com/800x450/?volkswagen,golf', answer: 'Volkswagen Golf', hint: 'Немецкий хэтчбек' },
+      { src: 'https://source.unsplash.com/800x450/?renault,clio',  answer: 'Renault Clio',    hint: 'Французский компактный хэтчбек' },
+      { src: 'https://source.unsplash.com/800x450/?volvo,s60',     answer: 'Volvo S60',        hint: 'Шведский премиум-седан' },
+      { src: 'https://source.unsplash.com/800x450/?ford,mustang',  answer: 'Ford Mustang',      hint: 'Американское культовое купе' },
+      { src: 'https://source.unsplash.com/800x450/?chevrolet,camaro', answer: 'Chevrolet Camaro', hint: 'Американский мускулкар' },
+      { src: 'https://source.unsplash.com/800x450/?tesla,model3',  answer: 'Tesla Model 3',     hint: 'Американский электромобиль' },
+      { src: 'https://source.unsplash.com/800x450/?lada,kalina',   answer: 'Lada Kalina',       hint: 'Российский городской седан' },
+      { src: 'https://source.unsplash.com/800x450/?lada,vesta',    answer: 'Lada Vesta',        hint: 'Российский семейный седан' },
+      { src: 'https://source.unsplash.com/800x450/?uaz,patriot',   answer: 'UAZ Patriot',       hint: 'Российский внедорожник' }
+    ];
+
+    // 2) Утилиты подсказок
+    function maskedHint(answer, hintsUsed) {
+      const words = (answer || '').split(' ');
+      const parts = words.map(word => {
+        const reveal = Math.min(1 + hintsUsed, word.length);
+        const revealed = word.substring(0, reveal);
+        const masked = word.substring(reveal).replace(/./g, '*');
+        return revealed + masked;
+      });
+      return parts.join(' ');
+    }
+
+    // 3) Прогресс и локальное хранение
+    const PROGRESS_KEY = 'carquiz_progress';
+    const BEST_KEY = 'carquiz_bestScore';
+    function loadProgress() {
+      try {
+        const raw = localStorage.getItem(PROGRESS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch { return {}; }
+    }
+    function saveProgress(p) {
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    }
+    function loadBest() {
+      try { return Number(localStorage.getItem(BEST_KEY) || 0); } catch { return 0; }
+    }
+    function saveBest(n) {
+      localStorage.setItem(BEST_KEY, String(n));
+    }
+
+    // DOM-элементы
+    const modeSelect = document.getElementById('modeSelect');
+    const guessInput = document.getElementById('guess');
+    const checkBtn = document.getElementById('checkBtn');
+    const hintBtn = document.getElementById('hintBtn');
+    const skipBtn = document.getElementById('skipBtn');
+    const scoreEl = document.getElementById('score');
+    const feedbackEl = document.getElementById('feedback');
+    const hintBox = document.getElementById('hintBox');
+    const progressListEl = document.getElementById('progressList');
+    const restartBtn = document.getElementById('restartBtn');
+    const choicesContainer = document.getElementById('choicesContainer');
+
+    // текущие данные игры
+    let currentIdx = 0;
+    let mode = 'text'; // 'text' или 'choices'
+    let score = 0;
+    let hintsUsed = 0;
+    let slidesReady = false;
+    let imageSprite = null;
+    let choicesForCurrent = [];
+
+    // 4) Прогрузка изображений и запуск сцены
+    // Пример простого прелоадера без явной сцены, т.к. используем DOM для UI
+    // Однако для масштабирования и плавности загрузки используем отдельную Phaser сцену ниже.
+
+    // 5) Конфигурация Phaser (быстрый старт)
+    const config = {
+      type: Phaser.AUTO,
+      width: 860,
+      height: 540,
+      backgroundColor: '#0b0f14',
+      parent: 'phaser-game',
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      },
+      scene: [Preloader, GuessCar]
+    };
+    const game = new Phaser.Game(config);
+
+    // 6) Предзагрузка и основная сцена
+    function Preloader() {
+      Phaser.Scene.call(this, { key: 'Preloader' });
+    }
+    Preloader.prototype = Object.create(Phaser.Scene.prototype);
+    Preloader.prototype.constructor = Preloader;
+    Preloader.prototype.preload = function() {
+      // подгрузим все изображения
+      slides.forEach((s, i) => {
+        this.load.image('car_' + i, s.src);
+      });
+    };
+    Preloader.prototype.create = function() {
+      this.scene.start('GuessCar');
+    };
+
+    // Основная сцена
+    function GuessCar() {
+      Phaser.Scene.call(this, { key: 'GuessCar' });
+    }
+    GuessCar.prototype = Object.create(Phaser.Scene.prototype);
+    GuessCar.prototype.constructor = GuessCar;
+
+    GuessCar.prototype.preload = function() {
+      // ничего особенного
+    };
+    GuessCar.prototype.create = function() {
+      // данные
+      this.slides = slides;
+      this.idx = 0;
+      this.score = 0;
+      this.hintsUsed = 0;
+
+      // отрисовка изображения текущего кадра
+      this.imageX = this.cameras.main.width / 2;
+      this.imageY = this.cameras.main.height * 0.28;
+
+      // создаём изображение
+      const key = 'car_' + this.idx;
+      this.carImage = this.add.image(this.imageX, this.imageY, key);
+      this.carImage.setOrigin(0.5);
+
+      // масштабируем под доступную ширину/высоту
+      const maxW = this.cameras.main.width * 0.92;
+      const maxH = this.cameras.main.height * 0.50;
+      const scaleX = maxW / this.carImage.width;
+      const scaleY = maxH / this.carImage.height;
+      const scale = Math.max(0.4, Math.min(scaleX, scaleY, 4));
+      this.carImage.setScale(scale);
+
+      // UI элементы (DOM)
+      this.guessInput = guessInput;
+      this.checkBtn = checkBtn;
+      this.hintBtn = hintBtn;
+      this.skipBtn = skipBtn;
+      this.scoreEl = scoreEl;
+      this.feedbackEl = feedbackEl;
+      this.hintBoxEl = hintBox;
+      this.restartBtn = restartBtn;
+      this.choicesContainer = choicesContainer;
+      this.modeSelect = modeSelect;
+
+      // режим
+      this.mode = 'text';
+      this.choicesContainer.innerHTML = '';
+      this.choicesContainer.style.display = 'none';
+      this.guessInput.style.display = 'block';
+
+      // обработчики
+      this.checkBtn.addEventListener('click', () => this.checkGuess());
+      this.hintBtn.addEventListener('click', () => this.useHint());
+      this.skipBtn.addEventListener('click', () => this.skipSlide());
+      this.guessInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.checkGuess(); });
+
+      // режим выбора вариантов
+      this.modeSelect.addEventListener('change', (e) => {
+        this.mode = e.target.value;
+        this.resetForSlide();
+      });
+
+      // частичная инициализация прогресса
+      renderProgress();
+      // загрузка первого кадра уже выполнена (изображение уже создано)
+    };
+
+    GuessCar.prototype.resetForSlide = function() {
+      // для простоты: очистить подсказки, вернуть ввод/выбор
+      this.hintsUsed = 0;
+      this.guessInput.value = '';
+      this.feedbackEl.textContent = '';
+      this.hintBoxEl.textContent = '';
+      if (this.mode === 'choices') {
+        this.generateChoicesForCurrent();
+      } else {
+        this.choicesContainer.innerHTML = '';
+        this.choicesContainer.style.display = 'none';
+        this.guessInput.style.display = 'block';
+      }
+      updateHintPreview(this);
+    };
+
+    // визуальная подсказка для текущего кадра
+    function updateHintPreview(ctx) {
+      const ans = slides[ctx?.idx || 0]?.answer || '';
+      if (!ctx) return;
+      const hint = maskedHint(ans, ctx.hintsUsed || 0);
+      ctx.hintBoxEl.textContent = 'Подсказка: ' + hint;
+    }
+
+    GuessCar.prototype.loadSlide = function(i) {
+      if (i < 0 || i >= slides.length) {
+        this.endGame();
+        return;
+      }
+      this.idx = i;
+      this.hintsUsed = 0;
+      this.guessInput.value = '';
+      this.feedbackEl.textContent = '';
+      this.hintBoxEl.textContent = '';
+
+      // смена изображения
+      const key = 'car_' + i;
+      this.carImage.setTexture(key);
+      // масштабируем заново относительно нового изображения
+      const maxW = this.cameras.main.width * 0.92;
+      const maxH = this.cameras.main.height * 0.50;
+      const scaleX = maxW / this.carImage.width;
+      const scaleY = maxH / this.carImage.height;
+      const scale = Math.max(0.4, Math.min(scaleX, scaleY, 4));
+      this.carImage.setScale(scale);
+
+      // режим выбора вариантов
+      if (this.mode === 'choices') {
+        this.generateChoicesForCurrent();
+      } else {
+        this.choicesContainer.innerHTML = '';
+        this.choicesContainer.style.display = 'none';
+        this.guessInput.style.display = 'block';
+      }
+
+      // подсказка под кадр
+      this.updateHintPreview();
+      renderProgress();
+    };
+
+    GuessCar.prototype.updateHintPreview = function() {
+      const ans = slides[this.idx]?.answer || '';
+      this.hintBoxEl.textContent = 'Подсказка: ' + maskedHint(ans, this.hintsUsed);
+    };
+
+    GuessCar.prototype.generateChoicesForCurrent = function() {
+      // 4 варианта: текущий ответ + 3 рандомных
+      const correct = slides[this.idx].answer;
+      const pool = slides.map(s => s.answer).filter(a => a && a !== correct);
+      const distractors = shuffleArray(pool).slice(0, 3);
+      const options = shuffleArray([correct, ...distractors]);
+      // рендерим кнопки
+      this.choicesContainer.innerHTML = '';
+      this.choicesContainer.style.display = 'block';
+      this.guessInput.style.display = 'none';
+      this.currentChoice = null;
+
+      const wrap = document.createElement('div');
+      wrap.style.display = 'grid';
+      wrap.style.gridTemplateColumns = 'repeat(2, 1fr)';
+      wrap.style.gap = '8px';
+      options.forEach((opt) => {
+        const btn = document.createElement('button');
+        btn.className = 'slideBtn';
+        btn.textContent = opt;
+        btn.onclick = () => {
+          // выделяем выбор
+          this.currentChoice = opt;
+          // визуальный отклик
+          Array.from(wrap.querySelectorAll('button')).forEach(b => b.style.outline = '');
+          btn.style.outline = '2px solid #fff';
+        };
+        wrap.appendChild(btn);
+      });
+      this.choicesContainer.appendChild(wrap);
+    };
+
+    GuessCar.prototype.checkGuess = function() {
+      const real = (slides[this.idx].answer || '').toLowerCase();
+      if (this.mode === 'text') {
+        const userRaw = (this.guessInput.value || '').trim().toLowerCase();
+        if (!userRaw) { this.feedbackEl.textContent = 'Введите ответ.'; return; }
+        if (userRaw === real) {
+          this.onCorrect();
+        } else {
+          this.feedbackEl.textContent = 'Неправильно. Попробуйте подсказку или пропустите.';
+        }
+      } else { // choices
+        const userChoice = (this.currentChoice || '').toLowerCase();
+        if (!userChoice) { this.feedbackEl.textContent = 'Выберите вариант.'; return; }
+        if (userChoice === real) {
+          this.onCorrect();
+        } else {
+          this.feedbackEl.textContent = 'Неправильно. Попробуйте подсказку или пропустите.';
+        }
+      }
+    };
+
+    GuessCar.prototype.useHint = function() {
+      const ans = slides[this.idx].answer;
+      const maxLen = Math.max(...ans.split(' ').map(w => w.length));
+      if (this.hintsUsed < maxLen - 1) this.hintsUsed += 1;
+      this.updateHintPreview();
+    };
+
+    GuessCar.prototype.skipSlide = function() {
+      this.markProgress(2);
+      this.nextSlide();
+    };
+
+    GuessCar.prototype.onCorrect = function() {
+      this.score += 1;
+      this.scoreEl.textContent = 'Счет: ' + this.score;
+      this.feedbackEl.textContent = 'Верно!';
+      this.markProgress(1);
+      this.time.delayedCall(600, () => this.nextSlide(), [], this);
+    };
+
+    GuessCar.prototype.nextSlide = function() {
+      this.idx += 1;
+      if (this.idx < slides.length) {
+        this.loadSlide(this.idx);
+      } else {
+        this.endGame();
+      }
+    };
+
+    GuessCar.prototype.endGame = function() {
+      this.endReached = true;
+      this.feedbackEl.textContent = 'Игра окончена. Ваш счет: ' + this.score;
+      this.hintBoxEl.textContent = '';
+      this.guessInput.disabled = true;
+      this.checkBtn.disabled = true;
+      this.hintBtn.disabled = true;
+      this.skipBtn.disabled = true;
+      restartBtn.style.display = 'inline-block';
+      // обновим лучший счёт
+      const best = loadBest();
+      if (this.score > best) {
+        saveBest(this.score);
+        // можно уведомить пользователя
+      }
+      // сохранить прогресс как финальный
+      const prog = loadProgress();
+      prog[this.idx] = 1;
+      saveProgress(prog);
+      renderProgress();
+    };
+
+    GuessCar.prototype.restartGame = function() {
+      this.idx = 0;
+      this.score = 0;
+      this.hintsUsed = 0;
+      this.endReached = false;
+      this.scoreEl.textContent = 'Счет: 0';
+      this.feedbackEl.textContent = '';
+      this.hintBoxEl.textContent = '';
+      this.guessInput.disabled = false;
+      this.checkBtn.disabled = false;
+      this.hintBtn.disabled = false;
+      this.skipBtn.disabled = false;
+      restartBtn.style.display = 'none';
+      // очистка выбора
+      this.choicesContainer.innerHTML = '';
+      this.choicesContainer.style.display = 'none';
+      this.guessInput.value = '';
+      // вернуться к первому кадру
+      this.loadSlide(0);
+    };
+
+    GuessCar.prototype.loadSlide = function(i) {
+      if (i < 0 || i >= slides.length) { this.endGame(); return; }
+      this.idx = i;
+      this.hintsUsed = 0;
+      this.guessInput.value = '';
+      this.feedbackEl.textContent = '';
+      this.hintBoxEl.textContent = '';
+
+      // смена изображения
+      const key = 'car_' + i;
+      if (this.image) this.image.destroy();
+      this.image = this.add.image(this.imageX, this.imageY, key);
+      this.image.setOrigin(0.5);
+      // масштаб
+      const maxW = this.cameras.main.width * 0.92;
+      const maxH = this.cameras.main.height * 0.50;
+      const scaleX = maxW / this.image.width;
+      const scaleY = maxH / this.image.height;
+      const scale = Math.max(0.4, Math.min(scaleX, scaleY, 4));
+      this.image.setScale(scale);
+
+      // режим выборов
+      if (this.mode === 'choices') {
+        this.generateChoicesForCurrent();
+      } else {
+        this.choicesContainer.innerHTML = '';
+        this.choicesContainer.style.display = 'none';
+        this.guessInput.style.display = 'block';
+      }
+
+      this.updateHintPreview();
+      renderProgress();
+    };
+
+    GuessCar.prototype.markProgress = function(status) {
+      // 0 - не отвечено, 1 - правильно, 2 - пропуск
+      const prog = loadProgress();
+      prog[this.idx] = status;
+      saveProgress(prog);
+      renderProgress();
+    };
+
+    // вспомогние функции
+    function shuffleArray(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // 7) Прогресс-рендеринг
+    function renderProgress() {
+      const prog = loadProgress();
+      progressListEl.innerHTML = '';
+      slides.forEach((s, idx) => {
+        const status = prog[idx] ?? 0;
+        const btn = document.createElement('button');
+        btn.className = 'slideBtn';
+        btn.title = `Кадр ${idx + 1}`;
+        btn.innerHTML = `<span class="status-dot ${status===1?'status-1':status===2?'status-2':'status-0'}"></span>${idx+1}`;
+        btn.onclick = () => {
+          if (game.scene.keys['GuessCar']) {
+            const scene = game.scene.keys['GuessCar'];
+            if (scene && typeof scene.goToSlide === 'function') scene.goToSlide(idx);
+          }
+        };
+        progressListEl.appendChild(btn);
+      });
+    }
+
+    // Простейшая методика перехода к кадру (через сцену)
+    GuessCar.prototype.goToSlide = function(i) {
+      if (i >= 0 && i < slides.length) {
+        this.loadSlide(i);
+      }
+    };
+
+    // подача ответов в режиме выбора
+    GuessCar.prototype.checkGuess = function() {
+      const real = (slides[this.idx].answer || '').toLowerCase();
+      if (this.mode === 'text') {
+        const userRaw = (this.guessInput.value || '').trim().toLowerCase();
+        if (!userRaw) { this.feedbackEl.textContent = 'Введите ответ.'; return; }
+        if (userRaw === real) this.onCorrect();
+        else this.feedbackEl.textContent = 'Неправильно. Подсказка или пропуск.';
+      } else {
+        const userChoice = (this.currentChoice || '').toLowerCase();
+        if (!userChoice) { this.feedbackEl.textContent = 'Выберите вариант.'; return; }
+        if (userChoice === real) this.onCorrect();
+        else this.feedbackEl.textContent = 'Неправильно. Подсказка или пропуск.';
+      }
+    };
+
+    // старые вызовы (модельность)
+    // Вставляем совместимые вызовы на кнопки
+    checkBtn.addEventListener('click', () => {
+      const scene = game.scene.keys['GuessCar'];
+      if (scene && typeof scene.checkGuess === 'function') scene.checkGuess();
+    });
+
+    hintBtn.addEventListener('click', () => {
+      const scene = game.scene.keys['GuessCar'];
+      if (scene && typeof scene.useHint === 'function') scene.useHint();
+    });
+
+    skipBtn.addEventListener('click', () => {
+      const scene = game.scene.keys['GuessCar'];
+      if (scene && typeof scene.skipSlide === 'function') scene.skipSlide();
+    });
+
+    restartBtn.addEventListener('click', () => {
+      const scene = game.scene.keys['GuessCar'];
+      if (scene && typeof scene.restartGame === 'function') scene.restartGame();
+    });
+
+    // Enter для отправки
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && document.activeElement === guessInput) {
+        checkBtn.click();
+      }
+    });
+
+    // Небольшой механизм инициализации UI
+    function initUI() {
+      // по умолчанию режим text
+      mode = 'text';
+      modeSelect.value = mode;
+      renderProgress();
+
+      restartBtn.style.display = 'none';
+    }
+
+    window.addEventListener('load', () => {
+      initUI();
+    });
+
+  </script>
+</body>
+</html>
